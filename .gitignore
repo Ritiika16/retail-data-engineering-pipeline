@@ -26,3 +26,9 @@ data/processed/
 # Operating system
 .DS_Store
 Thumbs.db
+
+airflow/logs/
+airflow/config/
+.env
+__pycache__/
+.pytest_cache/

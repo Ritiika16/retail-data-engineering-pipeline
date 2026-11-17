@@ -1,0 +1,71 @@
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: retail-airflow-spark:latest
+  env_file:
+    - .env
+  environment: &airflow-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__EXECUTION_API__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-api-server:8080/execution/
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: ${AIRFLOW_DB_CONNECTION}
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_API_SECRET_KEY}
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+    PYTHONPATH: /opt/airflow/project
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/config:/opt/airflow/config
+    - ./src:/opt/airflow/project/src
+    - ./sql:/opt/airflow/project/sql
+    - ./data:/opt/airflow/project/data
+    - ./tests:/opt/airflow/project/tests
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    airflow-db:
+      condition: service_healthy
+
+services:
+  airflow-db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: ${AIRFLOW_DB_USER:-airflow}
+      POSTGRES_PASSWORD: ${AIRFLOW_DB_PASSWORD}
+      POSTGRES_DB: ${AIRFLOW_DB_NAME:-airflow}
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  airflow-init:
+    <<: *airflow-common
+    command: >
+      bash -c "airflow db migrate"
+
+  airflow-api-server:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    restart: unless-stopped
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    restart: unless-stopped
+
+volumes:
+  airflow-db-data:
